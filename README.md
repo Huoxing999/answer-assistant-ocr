@@ -12,7 +12,6 @@
 
 <p align="center">
   <img src="1.png" alt="效果展示1" width="400">
-  <br><br>
   <img src="2.png" alt="效果展示2" width="400">
 </p>
 
