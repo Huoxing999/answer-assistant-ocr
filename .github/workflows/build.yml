@@ -60,16 +60,26 @@ jobs:
             cp -n "$lib" AppDir/usr/lib/ 2>/dev/null || true
           done
 
-          # Copy tessdata
-          TESSDATA_DIR=$(tesseract --print-parameters 2>&1 | grep tessdata | head -1 | awk '{print $2}' || echo "/usr/share/tesseract-ocr/5/tessdata")
-          if [ -d "/usr/share/tesseract-ocr/5/tessdata" ]; then
-            TESSDATA_DIR="/usr/share/tesseract-ocr/5/tessdata"
-          elif [ -d "/usr/share/tesseract-ocr/tessdata" ]; then
-            TESSDATA_DIR="/usr/share/tesseract-ocr/tessdata"
+          # Copy tessdata - try common paths
+          for TESSDATA_DIR in \
+            "/usr/share/tesseract-ocr/5/tessdata" \
+            "/usr/share/tesseract-ocr/4/tessdata" \
+            "/usr/share/tesseract-ocr/tessdata" \
+            "/usr/share/tessdata"; do
+            if [ -f "$TESSDATA_DIR/chi_sim.traineddata" ]; then
+              cp "$TESSDATA_DIR/chi_sim.traineddata" AppDir/usr/share/tessdata/
+              cp "$TESSDATA_DIR/eng.traineddata" AppDir/usr/share/tessdata/
+              echo "Tessdata copied from: $TESSDATA_DIR"
+              break
+            fi
+          done
+
+          # Verify tessdata was copied
+          if [ ! -f "AppDir/usr/share/tessdata/chi_sim.traineddata" ]; then
+            echo "ERROR: tessdata not found!"
+            find / -name "chi_sim.traineddata" 2>/dev/null
+            exit 1
           fi
-          cp "$TESSDATA_DIR/chi_sim.traineddata" AppDir/usr/share/tessdata/
-          cp "$TESSDATA_DIR/eng.traineddata" AppDir/usr/share/tessdata/
-          echo "Tessdata copied from: $TESSDATA_DIR"
 
           # Convert icon to PNG
           python3 -c "
@@ -77,8 +87,8 @@ jobs:
           img = Image.open('app_icon.ico')
           img = img.resize((256, 256), Image.LANCZOS)
           img.save('AppDir/usr/share/icons/hicolor/256x256/apps/answer-assistant.png', 'PNG')
-          cp 'AppDir/usr/share/icons/hicolor/256x256/apps/answer-assistant.png' 'AppDir/answer-assistant.png'
           "
+          cp AppDir/usr/share/icons/hicolor/256x256/apps/answer-assistant.png AppDir/answer-assistant.png
 
           # .desktop file
           cat > AppDir/answer-assistant.desktop << 'EOF'
