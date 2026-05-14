@@ -8,12 +8,12 @@
 
 ---
 
-通过框选屏幕上的题目区域，自动识别文字并从题库中匹配答案，支持自动复制最佳答案。
+<h2 align="center">效果展示</h1>
 
 <p align="center">
-  <img src="1.png" alt="效果展示1" width="800">
+  <img src="1.png" alt="效果展示1" width="400">
   <br><br>
-  <img src="2.png" alt="效果展示2" width="800">
+  <img src="2.png" alt="效果展示2" width="400">
 </p>
 
 ## 功能特性
