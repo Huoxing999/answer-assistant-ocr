@@ -1,0 +1,151 @@
+name: Build Linux AppImage
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3 python3-pip python3-venv \
+            tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng \
+            libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 \
+            libgl1-mesa-glx libglib2.0-0 \
+            wget file python3-pil
+
+      - name: Set up Python venv
+        run: |
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install pyinstaller PyQt5 pytesseract Pillow xlrd openpyxl
+
+      - name: Build with PyInstaller
+        run: |
+          source venv/bin/activate
+          pyinstaller --onefile --windowed --name answer-assistant \
+            --hidden-import=pytesseract --hidden-import=PIL \
+            --hidden-import=xlrd --hidden-import=openpyxl \
+            --hidden-import=PyQt5 --hidden-import=PyQt5.QtWidgets \
+            --hidden-import=PyQt5.QtCore --hidden-import=PyQt5.QtGui \
+            --collect-all=pytesseract --collect-all=openpyxl \
+            --add-data "app_icon.ico:." \
+            main.py
+
+      - name: Prepare AppImage structure
+        run: |
+          # Create AppDir
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/lib
+          mkdir -p AppDir/usr/share/tessdata
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          mkdir -p AppDir/usr/share/applications
+
+          # Copy PyInstaller binary
+          cp dist/answer-assistant AppDir/usr/bin/
+          chmod +x AppDir/usr/bin/answer-assistant
+
+          # Copy Tesseract and its dependencies
+          cp $(which tesseract) AppDir/usr/bin/tesseract-bin
+          chmod +x AppDir/usr/bin/tesseract-bin
+          ldd $(which tesseract) | grep "=> /" | awk '{print $3}' | while read lib; do
+            cp -n "$lib" AppDir/usr/lib/ 2>/dev/null || true
+          done
+
+          # Copy tessdata
+          TESSDATA_DIR=$(tesseract --print-parameters 2>&1 | grep tessdata | head -1 | awk '{print $2}' || echo "/usr/share/tesseract-ocr/5/tessdata")
+          if [ -d "/usr/share/tesseract-ocr/5/tessdata" ]; then
+            TESSDATA_DIR="/usr/share/tesseract-ocr/5/tessdata"
+          elif [ -d "/usr/share/tesseract-ocr/tessdata" ]; then
+            TESSDATA_DIR="/usr/share/tesseract-ocr/tessdata"
+          fi
+          cp "$TESSDATA_DIR/chi_sim.traineddata" AppDir/usr/share/tessdata/
+          cp "$TESSDATA_DIR/eng.traineddata" AppDir/usr/share/tessdata/
+          echo "Tessdata copied from: $TESSDATA_DIR"
+
+          # Convert icon to PNG
+          python3 -c "
+          from PIL import Image
+          img = Image.open('app_icon.ico')
+          img = img.resize((256, 256), Image.LANCZOS)
+          img.save('AppDir/usr/share/icons/hicolor/256x256/apps/answer-assistant.png', 'PNG')
+          cp 'AppDir/usr/share/icons/hicolor/256x256/apps/answer-assistant.png' 'AppDir/answer-assistant.png'
+          "
+
+          # .desktop file
+          cat > AppDir/answer-assistant.desktop << 'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=Answer Assistant
+          Exec=answer-assistant
+          Icon=answer-assistant
+          Categories=Utility;
+          Comment=OCR-based answer assistant for quiz matching
+          EOF
+
+          cp AppDir/answer-assistant.desktop AppDir/usr/share/applications/
+
+          # AppRun wrapper - sets up Tesseract path for bundled binary
+          cat > AppDir/AppRun << 'APPRUN'
+          #!/bin/bash
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+
+          export PATH="${HERE}/usr/bin:${PATH}"
+          export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
+          export TESSDATA_PREFIX="${HERE}/usr/share/tessdata"
+
+          # Create temp wrapper for tesseract
+          WRAPPER=$(mktemp)
+          cat > "$WRAPPER" << WRAPPER_EOF
+          #!/bin/bash
+          exec "${HERE}/usr/bin/tesseract-bin" --tessdata-dir "${HERE}/usr/share/tessdata" "\$@"
+          WRAPPER_EOF
+          chmod +x "$WRAPPER"
+          ln -sf "$WRAPPER" "${HERE}/usr/bin/tesseract"
+
+          exec "${HERE}/usr/bin/answer-assistant" "$@"
+          APPRUN
+          chmod +x AppDir/AppRun
+
+      - name: Download linuxdeploy
+        run: |
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+
+      - name: Build AppImage
+        run: |
+          ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --output appimage
+
+          # Rename output
+          APPIMAGE=$(ls *.AppImage 2>/dev/null | head -1)
+          if [ -n "$APPIMAGE" ]; then
+            mv "$APPIMAGE" "answer-assistant-linux-x86_64.AppImage"
+            echo "Built: answer-assistant-linux-x86_64.AppImage"
+            ls -lh answer-assistant-linux-x86_64.AppImage
+          else
+            echo "ERROR: AppImage not created"
+            exit 1
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: answer-assistant-linux-x86_64.AppImage
+
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: answer-assistant-linux-x86_64.AppImage
