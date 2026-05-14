@@ -63,6 +63,7 @@ jobs:
           # Copy tessdata - try common paths
           for TESSDATA_DIR in \
             "/usr/share/tesseract-ocr/5/tessdata" \
+            "/usr/share/tesseract-ocr/4.00/tessdata" \
             "/usr/share/tesseract-ocr/4/tessdata" \
             "/usr/share/tesseract-ocr/tessdata" \
             "/usr/share/tessdata"; do
