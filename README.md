@@ -6,6 +6,17 @@
 
 <p align="center">基于 OCR 识别的实时答题参考工具</p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Windows-10%2F11-blue?logo=windows" alt="Windows 10/11">
+  <img src="https://img.shields.io/badge/Python-3.8+-yellow?logo=python" alt="Python 3.8+">
+  <img src="https://img.shields.io/badge/License-MIT-green" alt="License">
+</p>
+
+<p align="center">
+  <b>安卓版请访问：</b>
+  <a href="https://github.com/Huoxing999/answer_assistant_flutter">answer_assistant_flutter</a>
+</p>
+
 ---
 
 <h2 align="center">效果展示</h1>
