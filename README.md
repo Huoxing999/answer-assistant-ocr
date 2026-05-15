@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <b>安卓版请访问：</b>
+  <b>移动版请访问：</b>
   <a href="https://github.com/Huoxing999/answer_assistant_flutter">answer_assistant_flutter</a>
 </p>
 
