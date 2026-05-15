@@ -2,7 +2,7 @@
   <img src="app_icon.ico" alt="答题参考助手" width="128">
 </p>
 
-<h1 align="center">答题参考助手</h1>
+<h1 align="center">晨星答题参考助手-桌面版</h1>
 
 <p align="center">基于 OCR 识别的实时答题参考工具</p>
 
