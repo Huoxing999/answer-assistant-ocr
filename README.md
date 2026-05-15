@@ -145,3 +145,5 @@ answer_assistant/
 ## 许可证
 
 MIT License
+
+版权所有@七八个星天外
