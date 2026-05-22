@@ -12,18 +12,46 @@ from config import (
 )
 
 
-class AnswerLabel(QLabel):
-    """可点击复制的答案标签"""
+class ClickableLabel(QLabel):
+    """可点击复制的标签基类"""
     clicked = pyqtSignal(str)
 
-    def __init__(self, text, font_size=FONT_SIZE, parent=None):
-        super().__init__(parent)
+    def __init__(self, text="", font_size=FONT_SIZE, parent=None):
+        super().__init__(text, parent)
         self.full_text = text
-        self.setText(text)
         self.setWordWrap(True)
         self.setCursor(QCursor(Qt.PointingHandCursor))
         self._font_size = font_size
         self._apply_style()
+
+    def _apply_style(self):
+        self.setStyleSheet(f"""
+            QLabel {{
+                color: #ddd; font-size: {self._font_size}px;
+                border: none; background: transparent; padding: 8px;
+            }}
+            QLabel:hover {{
+                color: #fff;
+                background: rgba(255, 255, 255, 20);
+            }}
+        """)
+
+    def set_font_size(self, size):
+        self._font_size = size
+        self._apply_style()
+
+    def setText(self, text):
+        self.full_text = text
+        super().setText(text)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and self.full_text:
+            QApplication.clipboard().setText(self.full_text)
+            self.clicked.emit(self.full_text)
+
+
+class AnswerLabel(ClickableLabel):
+    """可点击复制的答案标签"""
 
     def _apply_style(self):
         self.setStyleSheet(f"""
@@ -42,15 +70,6 @@ class AnswerLabel(QLabel):
                 border-color: #FFD700;
             }}
         """)
-
-    def set_font_size(self, size):
-        self._font_size = size
-        self._apply_style()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            QApplication.clipboard().setText(self.full_text)
-            self.clicked.emit(self.full_text)
 
 
 # ============================================================
@@ -270,9 +289,9 @@ class ResultWindow(QWidget):
         self.q_title = QLabel("识别题目")
         self.question_layout.addWidget(self.q_title)
 
-        self.question_label = QLabel("等待识别...")
-        self.question_label.setWordWrap(True)
+        self.question_label = ClickableLabel("等待识别...")
         self.question_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.question_label.clicked.connect(lambda t: self._on_question_copied())
         self.question_layout.addWidget(self.question_label, 1)
 
         # ========== 右侧：答案面板 ==========
@@ -331,10 +350,7 @@ class ResultWindow(QWidget):
             color: #FFD700; font-size: {s + 10}px; font-weight: bold;
             border: none; background: transparent; padding: 4px;
         """)
-        self.question_label.setStyleSheet(f"""
-            color: #ddd; font-size: {s}px;
-            border: none; background: transparent; padding: 8px;
-        """)
+        self.question_label.set_font_size(s)
         self.a_title.setStyleSheet(f"""
             color: #FFD700; font-size: {s + 10}px; font-weight: bold;
             border: none; background: transparent; padding: 4px;
@@ -429,6 +445,18 @@ class ResultWindow(QWidget):
     def _show_copied_status(self, count):
         s = self._font_size
         self.status_label.setText(f"已自动复制最佳答案 | 匹配 {count} 条")
+        self.status_label.setStyleSheet(f"""
+            color: #00FF88; font-size: {s - 4}px; font-weight: bold;
+            border: none; background: transparent;
+        """)
+        QTimer.singleShot(2000, lambda: self.status_label.setStyleSheet(f"""
+            color: #bbb; font-size: {s - 6}px;
+            border: none; background: transparent; padding-top: 6px;
+        """))
+
+    def _on_question_copied(self):
+        s = self._font_size
+        self.status_label.setText("题目已复制到剪贴板!")
         self.status_label.setStyleSheet(f"""
             color: #00FF88; font-size: {s - 4}px; font-weight: bold;
             border: none; background: transparent;

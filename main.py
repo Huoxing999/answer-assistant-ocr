@@ -8,13 +8,15 @@ if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
 # 将脚本目录加入 path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# 必须在 PyQt5 之前导入 ocr_engine（内部加载 torch），否则 DLL 冲突
+from ocr_engine import recognize, recognize_with_debug
+
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import QRect
 from PyQt5.QtGui import QIcon
 
-from config import TESSERACT_CMD, QUESTION_BANK_PATH
+from config import QUESTION_BANK_PATH
 from question_bank import QuestionBank
-from ocr_engine import recognize, recognize_with_debug
 from capture import capture_region, compute_hash, has_changed
 from overlay import CaptureRegion, ResultWindow
 from settings_dialog import SettingsDialog, load_settings
@@ -26,10 +28,11 @@ DEBUG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug")
 
 def check_dependencies():
     """检查外部依赖是否可用"""
-    if not os.path.isfile(TESSERACT_CMD):
-        print(f"[错误] Tesseract 未找到: {TESSERACT_CMD}")
-        print("请安装 Tesseract OCR: https://github.com/UB-Mannheim/tesseract/wiki")
-        print("安装后设置环境变量 TESSERACT_CMD 或修改 config.py")
+    try:
+        import easyocr
+    except ImportError:
+        print("[错误] EasyOCR 未安装")
+        print("请运行: pip install easyocr")
         return False
     return True
 
