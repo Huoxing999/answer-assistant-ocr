@@ -5,7 +5,7 @@
 基于 OCR 的实时答题参考工具。用户框选屏幕上的题目区域，程序自动识别文字并从题库中模糊匹配答案，支持自动复制最佳答案到剪贴板。
 
 - **仓库**: https://github.com/Huoxing999/answer-assistant-ocr
-- **技术栈**: Python 3.8+ / PyQt5 / Tesseract OCR / Pillow
+- **技术栈**: Python 3.8+ / PyQt5 / EasyOCR / Pillow
 - **平台**: Windows 10/11、Linux
 
 ---
@@ -13,14 +13,18 @@
 ## 目录结构
 
 ```
-answer_assistant/
+answer-assistant-ocr/
 ├── main.py              # 程序入口，组装所有组件
-├── config.py            # 全局配置常量，Tesseract 路径查找
+├── config.py            # 全局配置常量
 ├── capture.py           # 屏幕截图 + 感知哈希变化检测
-├── ocr_engine.py        # 图像预处理管线 + Tesseract OCR 封装
+├── ocr_engine.py        # EasyOCR 引擎封装
 ├── question_bank.py     # 电子表格读取 + 倒排索引 + 模糊匹配
-├── overlay.py           # PyQt5 窗口组件（识别框 + 结果窗口 + 答案标签）
+├── overlay.py           # PyQt5 窗口组件（识别框 + 结果窗口 + 可点击标签）
 ├── settings_dialog.py   # 设置对话框 + JSON 持久化
+├── launch.py            # 一键启动器（自动安装依赖、下载模型）
+├── launcher.py          # exe 启动器源码（查找系统 Python）
+├── build.py             # PyInstaller 打包脚本
+├── 启动答题助手.bat      # Windows 批处理启动入口
 ├── app_icon.ico         # 程序图标（256x256 透明背景）
 ├── requirements.txt     # Python 依赖
 ├── .gitignore
@@ -39,20 +43,12 @@ answer_assistant/
 **路径查找函数:**
 
 - `_get_base_dir()` - 返回程序根目录。检测 `sys.frozen`（PyInstaller 打包模式），否则用 `__file__` 所在目录。
-- `_find_tesseract()` - 多策略查找 Tesseract 可执行文件：
-  1. `TESSERACT_CMD` 环境变量
-  2. `<base_dir>/Tesseract-OCR/tesseract.exe`（懒人包内嵌）
-  3. `<parent_dir>/Tesseract-OCR/tesseract.exe`（上级目录）
-  4. Windows: `C:\Program Files\Tesseract-OCR\tesseract.exe`
-  5. Linux/macOS: `shutil.which("tesseract")`
 
 **配置常量:**
 
 | 常量 | 默认值 | 说明 |
 |------|--------|------|
 | `QUESTION_BANK_PATH` | `""` | 默认题库路径（空=运行时选择） |
-| `TESSERACT_CMD` | 自动查找 | Tesseract 可执行文件路径 |
-| `TESSERACT_LANG` | `"chi_sim+eng"` | OCR 语言（简体中文+英文） |
 | `POLL_INTERVAL` | `0.5` | 截图轮询间隔（秒） |
 | `CHANGE_THRESHOLD` | `2` | pHash 变化阈值（汉明距离比特数） |
 | `MATCH_THRESHOLD` | `0.35` | 匹配相似度下限（SequenceMatcher ratio） |
@@ -81,38 +77,28 @@ answer_assistant/
 
 ---
 
-### 3. ocr_engine.py - OCR 预处理与识别
+### 3. ocr_engine.py - OCR 识别
+
+使用 EasyOCR（基于 PyTorch）进行中文+英文识别，内置预处理（对比度增强、去噪、方向检测等）。
 
 **模块级配置:**
-- `TESSERACT_CONFIG = "--oem 1 --psm 6"`（LSTM 引擎，统一分块模式）
-- `SCALE_FACTOR = 2`（2 倍放大，模拟 300 DPI）
-
-**预处理管线 (`preprocess`):**
-
-```
-原始图像
-  → 2x 放大（LANCZOS 重采样）
-  → 灰度化（"L" 模式）
-  → 自动对比度增强（autocontrast, cutoff=1%）
-  → 中值滤波去噪（MedianFilter, size=3）
-  → 锐化（SHARPEN）
-  → Otsu 自适应二值化
-  → 二值图像
-```
+- `lang=["ch_sim", "en"]`（简体中文+英文）
+- `gpu=False`（CPU 模式，兼容无 GPU 环境）
+- `use_textline_orientation=True`（启用文字方向检测）
 
 **函数:**
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `_otsu_threshold` | `(gray_image: PIL.Image) -> int` | 纯 PIL 实现 Otsu 方法，遍历 256 个阈值取最大类间方差 |
-| `preprocess` | `(image: PIL.Image) -> PIL.Image` | 完整预处理管线，返回二值图像 |
-| `recognize` | `(image: PIL.Image) -> str` | 预处理 + Tesseract 识别，返回去空白文本 |
-| `recognize_with_debug` | `(image, debug_path=None) -> str` | 同上，可选保存预处理后图像用于调试 |
+| `_get_ocr()` | `() -> easyocr.Reader` | 懒加载 EasyOCR 引擎（避免 import 时初始化） |
+| `preprocess` | `(image: PIL.Image) -> PIL.Image` | 保留接口，PaddleOCR 自带预处理，仅用于调试 |
+| `recognize` | `(image: PIL.Image) -> str` | EasyOCR 识别，返回拼接后的文本 |
+| `recognize_with_debug` | `(image, debug_path=None) -> str` | 同上，可选保存原始图像用于调试 |
 
 **调优要点:**
-- 如果 OCR 识别率低，先检查 `debug/` 目录下的预处理图像
-- `SCALE_FACTOR` 影响小字识别率，过大会变慢
-- `--psm 6` 假设文字是统一分块，如果题目是单行可用 `--psm 7`
+- 如果 OCR 识别率低，检查 `debug/` 目录下的原始截图
+- EasyOCR 内置预处理，无需手动调参
+- 首次运行会自动下载模型（约 100MB），缓存在 `~/.EasyOCR/`
 
 ---
 
@@ -166,14 +152,19 @@ QWidget
 └── ResultWindow     # 结果窗口（题目 + 答案）
 
 QLabel
-└── AnswerLabel      # 可点击答案标签
+└── ClickableLabel   # 可点击复制的标签基类
+    └── AnswerLabel  # 答案标签（蓝色样式）
 ```
+
+#### ClickableLabel
+
+- 左键点击 → 发射 `clicked(str)` 信号 + 复制文本到剪贴板
+- `set_font_size(size)` 动态更新字体
+- `setText(text)` 同步更新 `full_text`
 
 #### AnswerLabel
 
-- 左键点击 → 发射 `clicked(str)` 信号 + 复制文本到剪贴板
-- 样式：蓝色背景、白色文字、圆角、悬停高亮
-- `set_font_size(size)` 动态更新字体
+- 继承 ClickableLabel，蓝色背景、白色文字、圆角、悬停高亮
 
 #### CaptureRegion
 
@@ -346,16 +337,8 @@ QLabel
        ▼
   recognize()
        │
-       ├── preprocess()
-       │     1. 2x 放大 (LANCZOS)
-       │     2. 灰度化
-       │     3. 自动对比度
-       │     4. 中值滤波去噪
-       │     5. 锐化
-       │     6. Otsu 二值化
-       │
-       └── pytesseract.image_to_string()
-             (OEM 1 LSTM, PSM 6, chi_sim+eng)
+       └── easyocr.Reader.readtext()
+             (ch_sim + en, CPU 模式, 自带预处理)
        │
        ▼
   OCR 文本
@@ -386,22 +369,28 @@ QLabel
 
 ```
 PyQt5>=5.15        # GUI 框架
-pytesseract>=0.3   # Tesseract Python 封装
+easyocr>=1.7       # OCR 引擎（基于 PyTorch）
 Pillow>=9.0        # 图像处理
 xlrd>=2.0          # 读取 .xls
-openpyxl>=3.0      # 读取 .xlsx（requirements.txt 中缺失，需补充）
+openpyxl>=3.0      # 读取 .xlsx
+pyperclip>=1.8     # 剪贴板操作
 ```
 
-### Windows 懒人包
+### Windows 打包
 
-打包脚本位于 `answer_assistant_portable/build.py`：
+**方式一：轻量 exe 启动器（推荐）**
 
-1. PyInstaller `--onefile --windowed` 打包为单个 exe
-2. 复制 Tesseract-OCR（tesseract.exe + DLL + tessdata）
-3. 生成 `使用说明.txt`
-4. 输出到 `dist/` 目录
+打包脚本：`build.py`（基于 launcher.py）
+
+1. PyInstaller `--onefile --windowed` 打包 launcher.py 为 exe（约 8MB）
+2. exe 查找系统 Python，自动安装依赖、下载模型
+3. 用户需已安装 Python 3.8+
 
 运行：`python build.py`
+
+**方式二：完整打包**
+
+直接用 PyInstaller 打包 main.py，包含 PyTorch + EasyOCR（约 500MB+），用户无需安装 Python。
 
 ### Linux AppImage
 
@@ -409,7 +398,7 @@ GitHub Actions 自动构建（`.github/workflows/build.yml`）：
 
 - **触发条件**: push `v*` 标签
 - **环境**: Ubuntu 22.04
-- **流程**: PyInstaller 打包 → 打包 Tesseract + 语言包 → linuxdeploy 生成 AppImage
+- **流程**: PyInstaller 打包 → linuxdeploy 生成 AppImage
 - **产物**: `answer-assistant-linux-x86_64.AppImage`
 
 手动触发构建：
@@ -434,9 +423,10 @@ else:
 ```
 
 涉及文件：
-- `config.py` - `_get_base_dir()` 和 `_find_tesseract()`
+- `config.py` - `_get_base_dir()`
 - `settings_dialog.py` - `_get_settings_file()`
 - `main.py` - 图标路径
+- `launcher.py` - exe 启动器中查找脚本目录
 
 ---
 
@@ -447,9 +437,9 @@ else:
 | 感知哈希变化检测 | `capture.py` | 避免对未变化画面执行 OCR（最有效的优化） |
 | 文本去重 | `main.py: on_poll()` | `text == last_text` 跳过重复匹配 |
 | 倒排索引 | `question_bank.py` | 将匹配候选集从全量缩小到关键词交集 |
-| Otsu 自适应二值化 | `ocr_engine.py` | 纯 PIL 实现，无 OpenCV 依赖 |
+| 懒加载 OCR 引擎 | `ocr_engine.py` | 首次识别时才初始化 EasyOCR，避免启动卡顿 |
 
-**瓶颈:** Tesseract OCR 是 CPU 密集型操作，单次识别约 100-500ms。所有操作在主线程执行，轮询间隔 500ms。
+**瓶颈:** EasyOCR 首次识别需加载模型（约 2-5 秒），后续识别约 200-800ms。所有操作在主线程执行，轮询间隔 500ms。
 
 ---
 
@@ -486,15 +476,15 @@ recognize_with_debug(img, debug_path)
 ### 已知问题
 
 1. **主线程阻塞**: OCR 在主线程执行，识别时界面会短暂卡顿
-2. **requirements.txt 缺失 openpyxl**: 需补充 `openpyxl>=3.0`
-3. **线程模型**: 所有操作同步执行，大题库首次加载可能较慢
+2. **首次加载慢**: EasyOCR 首次识别需加载模型（约 2-5 秒）
+3. **打包体积大**: PyTorch + EasyOCR 完整打包约 500MB+
 
 ### 可能的改进
 
 | 方向 | 说明 |
 |------|------|
-| 异步 OCR | 将 Tesseract 调用移到 QThread，避免界面卡顿 |
-| OCR 引擎切换 | 支持 PaddleOCR、EasyOCR 等离线引擎，识别率可能更高 |
+| 异步 OCR | 将 EasyOCR 调用移到 QThread，避免界面卡顿 |
+| GPU 加速 | 支持 CUDA GPU 推理，大幅提升识别速度 |
 | 多题库支持 | 同时加载多个题库文件 |
 | 历史记录 | 保存识别历史，支持回看 |
 | 题库在线更新 | 支持从 URL 下载题库 |
@@ -510,6 +500,7 @@ recognize_with_debug(img, debug_path)
 |------|------|------|
 | v1.0.0 | 2026-05-14 | Windows 懒人包发布，含全部功能 |
 | v1.1.0 | 2026-05-14 | 新增 Linux AppImage 自动构建 |
+| v2.0.0 | 2026-05-22 | OCR 引擎从 Tesseract 迁移到 EasyOCR，中文识别准确率大幅提升；新增题目点击复制；新增一键启动器 |
 
 ---
 
