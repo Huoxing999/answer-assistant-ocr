@@ -5,6 +5,7 @@
 import subprocess
 import sys
 import os
+import importlib.util
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REQUIREMENTS = {
@@ -13,28 +14,14 @@ REQUIREMENTS = {
     "PIL": "Pillow>=9.0",
     "xlrd": "xlrd>=2.0",
     "openpyxl": "openpyxl>=3.0",
-    "pyperclip": "pyperclip>=1.8",
 }
 
 
 def check_and_install():
-    """检查依赖，缺失的自动安装（通过 pip list 检查，避免 DLL 冲突）"""
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "list", "--format=freeze"],
-        capture_output=True, text=True,
-    )
-    installed = {line.split("==")[0].lower() for line in result.stdout.splitlines()}
-
-    # 包名到 pip 包名的映射
-    pip_names = {
-        "PyQt5": "PyQt5", "easyocr": "easyocr", "PIL": "Pillow",
-        "xlrd": "xlrd", "openpyxl": "openpyxl", "pyperclip": "pyperclip",
-    }
-
+    """轻量检查依赖，避免每次启动都运行 pip list。"""
     missing = []
     for module, package in REQUIREMENTS.items():
-        pip_name = pip_names.get(module, package.split(">=")[0].split("==")[0])
-        if pip_name.lower() not in installed:
+        if importlib.util.find_spec(module) is None:
             missing.append(package)
 
     if not missing:
@@ -58,24 +45,13 @@ def check_and_install():
 
 
 def pre_download_models():
-    """预下载 EasyOCR 模型（首次运行时），在子进程中执行避免 DLL 冲突"""
+    """OCR 模型改为首次识别时加载，避免拖慢软件启动。"""
     model_dir = os.path.join(os.path.expanduser("~"), ".EasyOCR")
     if os.path.isdir(model_dir) and os.listdir(model_dir):
         return True
 
-    print("[启动器] 首次运行，正在下载 OCR 模型（约 100MB）...")
-    print("[启动器] 请耐心等待...\n")
-    result = subprocess.run(
-        [sys.executable, "-c",
-         "import easyocr; easyocr.Reader(['ch_sim','en'], gpu=False, verbose=False)"],
-        capture_output=False,
-    )
-    if result.returncode == 0:
-        print("[启动器] 模型下载完成\n")
-        return True
-
-    print("[启动器] 模型下载失败，请检查网络连接后重试")
-    return False
+    print("[启动器] OCR 模型将在首次识别时自动准备，启动阶段先跳过模型加载。")
+    return True
 
 
 def main():

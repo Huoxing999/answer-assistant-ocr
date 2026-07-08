@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QMenu,
     QScrollArea
@@ -13,7 +13,7 @@ from config import (
 
 
 class ClickableLabel(QLabel):
-    """可点击复制的标签基类"""
+    """鍙偣鍑诲鍒剁殑鏍囩鍩虹被"""
     clicked = pyqtSignal(str)
 
     def __init__(self, text="", font_size=FONT_SIZE, parent=None):
@@ -51,7 +51,7 @@ class ClickableLabel(QLabel):
 
 
 class AnswerLabel(ClickableLabel):
-    """可点击复制的答案标签"""
+    """鍙偣鍑诲鍒剁殑绛旀鏍囩"""
 
     def _apply_style(self):
         self.setStyleSheet(f"""
@@ -72,11 +72,115 @@ class AnswerLabel(ClickableLabel):
         """)
 
 
+class AnswerCard(QWidget):
+    clicked = pyqtSignal(str)
+
+    def __init__(self, answer_code="", details=None, copy_text="", font_size=FONT_SIZE, parent=None):
+        super().__init__(parent)
+        self.answer_code = str(answer_code or "").strip()
+        self.details = details or []
+        self.copy_text = copy_text or self._build_copy_text()
+        self._font_size = font_size
+        self.setCursor(QCursor(Qt.PointingHandCursor))
+
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(18, 14, 18, 14)
+        self.layout.setSpacing(10)
+
+        self.code_label = QLabel(self.answer_code or self.copy_text)
+        self.code_label.setWordWrap(True)
+        self.code_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.layout.addWidget(self.code_label)
+
+        self.detail_widgets = []
+        for label, text in self.details:
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(10)
+
+            badge = QLabel(str(label))
+            badge.setAlignment(Qt.AlignCenter)
+            badge.setFixedWidth(34)
+            row_layout.addWidget(badge)
+
+            option = QLabel(str(text))
+            option.setWordWrap(True)
+            option.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+            row_layout.addWidget(option, 1)
+
+            self.detail_widgets.append((badge, option))
+            self.layout.addWidget(row)
+
+        self._apply_style()
+
+    def _build_copy_text(self):
+        if not self.details:
+            return self.answer_code
+        lines = [self.answer_code] if self.answer_code else []
+        lines.extend(f"{label} {text}" for label, text in self.details)
+        return "\n".join(lines)
+
+    def set_font_size(self, size):
+        self._font_size = size
+        self._apply_style()
+
+    def _apply_style(self):
+        s = self._font_size
+
+
+        self.setStyleSheet(f"""
+            AnswerCard {{
+                background: rgba(0, 92, 168, 225);
+                border: 2px solid rgba(80, 170, 235, 230);
+                border-radius: 8px;
+            }}
+            AnswerCard:hover {{
+                background: rgba(0, 120, 215, 240);
+                border-color: #FFD700;
+            }}
+        """)
+        self.code_label.setStyleSheet(f"""
+            color: #ffffff;
+            font-size: {s + 10}px;
+            font-weight: 800;
+            letter-spacing: 0px;
+            border: none;
+            background: transparent;
+            padding: 0 0 4px 0;
+        """)
+        for badge, option in self.detail_widgets:
+            badge.setStyleSheet(f"""
+                color: #092033;
+                background: #FFD866;
+                border: none;
+                border-radius: 4px;
+                padding: 4px 0;
+                font-size: {max(s - 6, 14)}px;
+                font-weight: bold;
+            """)
+            option.setStyleSheet(f"""
+                color: #F4F8FF;
+                border: none;
+                background: transparent;
+                font-size: {max(s, 16)}px;
+                font-weight: 600;
+                padding: 2px 0;
+            """)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and self.copy_text:
+            QApplication.clipboard().setText(self.copy_text)
+            self.clicked.emit(self.copy_text)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+
 # ============================================================
-#  识别框 - 独立的透明选框，用于框选屏幕区域
-# ============================================================
+#  璇嗗埆妗?- 鐙珛鐨勯€忔槑閫夋锛岀敤浜庢閫夊睆骞曞尯鍩?# ============================================================
 class CaptureRegion(QWidget):
-    """可拖拽/缩放的透明选框，用于框选 OCR 识别区域"""
+    """鍙嫋鎷?缂╂斁鐨勯€忔槑閫夋锛岀敤浜庢閫?OCR 璇嗗埆鍖哄煙"""
     open_settings = pyqtSignal()
 
     def __init__(self):
@@ -105,19 +209,19 @@ class CaptureRegion(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        # 半透明背景
+        # 鍗婇€忔槑鑳屾櫙
         painter.setBrush(QBrush(QColor(0, 0, 0, 30)))
         painter.setPen(Qt.NoPen)
         painter.drawRect(self.rect())
 
-        # 边框：锁定=蓝色，未锁定=绿色
+        # 杈规锛氶攣瀹?钃濊壊锛屾湭閿佸畾=缁胯壊
         border_color = QColor(0, 120, 255, 255) if self._locked else QColor(0, 255, 100, 255)
         pen = QPen(border_color, 3, Qt.SolidLine)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
         painter.drawRect(self.rect().adjusted(1, 1, -1, -1))
 
-        # 四角标记
+        # 鍥涜鏍囪
         corner_len = 20
         pen2 = QPen(QColor(255, 255, 0, 255), 4, Qt.SolidLine)
         painter.setPen(pen2)
@@ -131,13 +235,10 @@ class CaptureRegion(QWidget):
         painter.drawLine(r.bottomRight(), r.bottomRight() + QPoint(-corner_len, 0))
         painter.drawLine(r.bottomRight(), r.bottomRight() + QPoint(0, -corner_len))
 
-        # 中间提示文字
+        # Locked mode hides helper text so OCR does not capture it.
         if not self._locked:
             painter.setPen(QColor(255, 255, 255, 180))
             painter.drawText(self.rect(), Qt.AlignCenter, "拖拽移动 | 缩放大小 | 右键菜单")
-        else:
-            painter.setPen(QColor(0, 180, 255, 200))
-            painter.drawText(self.rect(), Qt.AlignCenter, "已锁定 | 右键菜单")
 
         painter.end()
 
@@ -249,10 +350,10 @@ class CaptureRegion(QWidget):
 
 
 # ============================================================
-#  结果窗口 - 独立的题目+答案显示窗口
+#  缁撴灉绐楀彛 - 鐙珛鐨勯鐩?绛旀鏄剧ず绐楀彛
 # ============================================================
 class ResultWindow(QWidget):
-    """独立的结果显示窗口，可自由拖动"""
+    """Floating OCR result window."""
 
     def __init__(self):
         super().__init__()
@@ -275,7 +376,7 @@ class ResultWindow(QWidget):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
 
-        # ========== 左侧：题目面板 ==========
+        # ========== 宸︿晶锛氶鐩潰鏉?==========
         self.question_panel = QWidget()
         self.question_panel.setStyleSheet("""
             background: rgba(15, 15, 15, 245);
@@ -294,7 +395,15 @@ class ResultWindow(QWidget):
         self.question_label.clicked.connect(lambda t: self._on_question_copied())
         self.question_layout.addWidget(self.question_label, 1)
 
-        # ========== 右侧：答案面板 ==========
+        self.matched_title = QLabel("匹配题目")
+        self.question_layout.addWidget(self.matched_title)
+
+        self.matched_label = ClickableLabel("等待匹配...")
+        self.matched_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.matched_label.clicked.connect(lambda t: self._on_question_copied())
+        self.question_layout.addWidget(self.matched_label, 1)
+
+        # ========== 鍙充晶锛氱瓟妗堥潰鏉?==========
         self.answer_panel = QWidget()
         self.answer_panel.setStyleSheet("""
             background: rgba(15, 15, 15, 245);
@@ -308,7 +417,7 @@ class ResultWindow(QWidget):
         self.a_title = QLabel("参考答案")
         self.answer_layout.addWidget(self.a_title)
 
-        # 答案滚动区域
+        # 绛旀婊氬姩鍖哄煙
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setStyleSheet("""
@@ -340,17 +449,22 @@ class ResultWindow(QWidget):
         self.main_layout.addWidget(self.question_panel, 1)
         self.main_layout.addWidget(self.answer_panel, 1)
 
-        # 应用初始字体
+        # 搴旂敤鍒濆瀛椾綋
         self._apply_font_sizes()
 
     def _apply_font_sizes(self):
-        """根据当前 _font_size 动态更新所有字体"""
+        """Refresh dynamic font sizes."""
         s = self._font_size
         self.q_title.setStyleSheet(f"""
             color: #FFD700; font-size: {s + 10}px; font-weight: bold;
             border: none; background: transparent; padding: 4px;
         """)
         self.question_label.set_font_size(s)
+        self.matched_title.setStyleSheet(f"""
+            color: #7ED7FF; font-size: {max(s - 2, 14)}px; font-weight: bold;
+            border: none; background: transparent; padding: 8px 4px 2px 4px;
+        """)
+        self.matched_label.set_font_size(max(s - 4, 14))
         self.a_title.setStyleSheet(f"""
             color: #FFD700; font-size: {s + 10}px; font-weight: bold;
             border: none; background: transparent; padding: 4px;
@@ -361,28 +475,25 @@ class ResultWindow(QWidget):
         """)
 
     def set_font_size(self, size):
-        """动态调整字体大小"""
+        """Set result window font size."""
         self._font_size = size
         self._apply_font_sizes()
-        # 刷新答案区的字体
+        # 鍒锋柊绛旀鍖虹殑瀛椾綋
         self._refresh_answer_fonts()
 
     def _refresh_answer_fonts(self):
-        """刷新答案区域中所有 AnswerLabel 的字体"""
+        """Refresh answer widgets after font-size changes."""
         for i in range(self.answer_area.count()):
             item = self.answer_area.itemAt(i)
             if item and item.widget():
                 w = item.widget()
-                if isinstance(w, AnswerLabel):
+                if isinstance(w, (AnswerLabel, AnswerCard)):
                     w.set_font_size(self._font_size)
                 elif isinstance(w, QLabel):
-                    # 匹配度标题
-                    txt = w.text()
-                    if "匹配度" in txt:
-                        w.setStyleSheet(f"""
-                            color: #4FC3F7; font-size: {self._font_size - 4}px; font-weight: bold;
-                            border: none; background: transparent; margin-top: 8px;
-                        """)
+                    w.setStyleSheet(f"""
+                        color: #4FC3F7; font-size: {max(self._font_size - 8, 12)}px; font-weight: bold;
+                        border: none; background: transparent; margin-top: 4px;
+                    """)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -400,6 +511,9 @@ class ResultWindow(QWidget):
     def update_question(self, text):
         self.question_label.setText(text)
 
+    def update_matched_question(self, text):
+        self.matched_label.setText(text or "未匹配到题库题目")
+
     def update_answers(self, results):
         while self.answer_area.count():
             child = self.answer_area.takeAt(0)
@@ -409,9 +523,10 @@ class ResultWindow(QWidget):
         s = self._font_size
 
         if not results:
+            self.update_matched_question("")
             label = QLabel("未找到匹配题目")
             label.setStyleSheet(f"""
-                color: #ff6b6b; font-size: {s}px; font-weight: bold;
+                color: #ff6b6b; font-size: {max(s - 4, 14)}px; font-weight: bold;
                 border: none; background: transparent;
             """)
             self.answer_area.addWidget(label)
@@ -419,26 +534,40 @@ class ResultWindow(QWidget):
             self.answer_area.addStretch()
             return
 
-        for i, (score, question, answer) in enumerate(results):
-            q_short = question[:50] + "..." if len(question) > 50 else question
-            header = QLabel(f"匹配度 {score:.0%} | {q_short}")
-            header.setStyleSheet(f"""
-                color: #4FC3F7; font-size: {s - 4}px; font-weight: bold;
-                border: none; background: transparent; margin-top: 8px;
-            """)
-            self.answer_area.addWidget(header)
+        result = results[0]
+        if len(result) >= 6:
+            score, question, answer, answer_code, details, copy_text = result[:6]
+        elif len(result) == 4:
+            score, question, answer, display_answer = result
+            answer_code = answer
+            details = []
+            copy_text = display_answer
+        else:
+            score, question, answer = result
+            answer_code = answer
+            details = []
+            copy_text = answer
 
-            ans_label = AnswerLabel(answer, font_size=s)
-            ans_label.clicked.connect(lambda t: self._on_copied(t))
-            self.answer_area.addWidget(ans_label)
+        self.update_matched_question(question)
 
+        header = QLabel(f"最高匹配 {score:.0%}")
+        header.setStyleSheet(f"""
+            color: #4FC3F7; font-size: {max(s - 8, 12)}px; font-weight: bold;
+            border: none; background: transparent; margin-top: 4px;
+        """)
+        self.answer_area.addWidget(header)
+
+        answer_font = max(s - 2, 18)
+        if details:
+            answer_widget = AnswerCard(answer_code, details, copy_text, font_size=answer_font)
+        else:
+            answer_widget = AnswerLabel(copy_text, font_size=answer_font)
+        answer_widget.clicked.connect(lambda t: self._on_copied(t))
+        self.answer_area.addWidget(answer_widget)
         self.answer_area.addStretch()
 
-        # 自动复制最佳答案
-        best_answer = results[0][2]
-        QApplication.clipboard().setText(best_answer)
-        self._show_copied_status(len(results))
-
+        QApplication.clipboard().setText(copy_text)
+        self._show_copied_status(1)
     def set_status(self, text):
         self.status_label.setText(text)
 
@@ -446,39 +575,38 @@ class ResultWindow(QWidget):
         s = self._font_size
         self.status_label.setText(f"已自动复制最佳答案 | 匹配 {count} 条")
         self.status_label.setStyleSheet(f"""
-            color: #00FF88; font-size: {s - 4}px; font-weight: bold;
+            color: #00FF88; font-size: {max(s - 6, 12)}px; font-weight: bold;
             border: none; background: transparent;
         """)
         QTimer.singleShot(2000, lambda: self.status_label.setStyleSheet(f"""
-            color: #bbb; font-size: {s - 6}px;
+            color: #bbb; font-size: {max(s - 8, 12)}px;
             border: none; background: transparent; padding-top: 6px;
         """))
 
     def _on_question_copied(self):
         s = self._font_size
-        self.status_label.setText("题目已复制到剪贴板!")
+        self.status_label.setText("题目已复制到剪贴板")
         self.status_label.setStyleSheet(f"""
-            color: #00FF88; font-size: {s - 4}px; font-weight: bold;
+            color: #00FF88; font-size: {max(s - 6, 12)}px; font-weight: bold;
             border: none; background: transparent;
         """)
         QTimer.singleShot(2000, lambda: self.status_label.setStyleSheet(f"""
-            color: #bbb; font-size: {s - 6}px;
+            color: #bbb; font-size: {max(s - 8, 12)}px;
             border: none; background: transparent; padding-top: 6px;
         """))
 
     def _on_copied(self, text):
         QApplication.clipboard().setText(text)
         s = self._font_size
-        self.status_label.setText("已复制到剪贴板!")
+        self.status_label.setText("已复制到剪贴板")
         self.status_label.setStyleSheet(f"""
-            color: #00FF88; font-size: {s - 4}px; font-weight: bold;
+            color: #00FF88; font-size: {max(s - 6, 12)}px; font-weight: bold;
             border: none; background: transparent;
         """)
         QTimer.singleShot(2000, lambda: self.status_label.setStyleSheet(f"""
-            color: #bbb; font-size: {s - 6}px;
+            color: #bbb; font-size: {max(s - 8, 12)}px;
             border: none; background: transparent; padding-top: 6px;
         """))
-
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self._drag_pos = event.globalPos() - self.frameGeometry().topLeft()
@@ -501,3 +629,6 @@ class ResultWindow(QWidget):
         menu.addSeparator()
         menu.addAction("退出").triggered.connect(QApplication.quit)
         menu.exec_(event.globalPos())
+
+
+

@@ -91,9 +91,10 @@ answer-assistant-ocr/
 | 函数 | 签名 | 说明 |
 |------|------|------|
 | `_get_ocr()` | `() -> easyocr.Reader` | 懒加载 EasyOCR 引擎（避免 import 时初始化） |
-| `preprocess` | `(image: PIL.Image) -> PIL.Image` | 保留接口，PaddleOCR 自带预处理，仅用于调试 |
+| `preprocess` | `(image: PIL.Image) -> PIL.Image` | 保留接口，EasyOCR 自带预处理，仅用于调试 |
 | `recognize` | `(image: PIL.Image) -> str` | EasyOCR 识别，返回拼接后的文本 |
 | `recognize_with_debug` | `(image, debug_path=None) -> str` | 同上，可选保存原始图像用于调试 |
+| `save_debug_image` | `(image, debug_path) -> None` | 仅保存调试截图，不重复执行 OCR |
 
 **调优要点:**
 - 如果 OCR 识别率低，检查 `debug/` 目录下的原始截图
@@ -373,7 +374,6 @@ easyocr>=1.7       # OCR 引擎（基于 PyTorch）
 Pillow>=9.0        # 图像处理
 xlrd>=2.0          # 读取 .xls
 openpyxl>=3.0      # 读取 .xlsx
-pyperclip>=1.8     # 剪贴板操作
 ```
 
 ### Windows 打包
@@ -439,7 +439,7 @@ else:
 | 倒排索引 | `question_bank.py` | 将匹配候选集从全量缩小到关键词交集 |
 | 懒加载 OCR 引擎 | `ocr_engine.py` | 首次识别时才初始化 EasyOCR，避免启动卡顿 |
 
-**瓶颈:** EasyOCR 首次识别需加载模型（约 2-5 秒），后续识别约 200-800ms。所有操作在主线程执行，轮询间隔 500ms。
+**瓶颈:** EasyOCR 首次识别需加载模型（约 2-5 秒），后续识别约 200-800ms。3.0 中 OCR 与题库匹配已放入后台线程池，主线程主要负责截图与界面刷新。
 
 ---
 
@@ -447,11 +447,11 @@ else:
 
 ### OCR 调试
 
-`main.py` 中 `DEBUG_OCR = True` 时，OCR 失败（文本太短）会保存预处理图像到 `debug/` 目录：
+`config.py` 中 `DEBUG_OCR = True` 时，OCR 失败（文本太短）会保存原始截图到 `debug/` 目录：
 
 ```python
 debug_path = os.path.join(DEBUG_DIR, f"debug_{poll_count}.png")
-recognize_with_debug(img, debug_path)
+save_debug_image(img, debug_path)
 ```
 
 检查二值化图像可以判断：

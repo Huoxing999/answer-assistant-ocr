@@ -14,10 +14,10 @@ def _get_base_dir():
 QUESTION_BANK_PATH = ""
 
 # 轮询间隔（秒）
-POLL_INTERVAL = 0.5
+POLL_INTERVAL = 0.8
 
 # 变化检测阈值（哈希差异比特数，超过此值认为内容变化）
-CHANGE_THRESHOLD = 2
+CHANGE_THRESHOLD = 8
 
 # 匹配阈值（0-1，SequenceMatcher 相似度，低于此值不显示）
 MATCH_THRESHOLD = 0.35
@@ -32,3 +32,9 @@ WINDOW_MIN_HEIGHT = 20
 
 # 字体大小（可在设置中动态调整）
 FONT_SIZE = 25
+
+# OCR 调试：开启后会保存无法识别的截图，默认关闭以避免频繁写盘
+DEBUG_OCR = False
+
+# 调试图片最多保留数量
+MAX_DEBUG_IMAGES = 50

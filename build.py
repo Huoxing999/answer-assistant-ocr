@@ -41,7 +41,6 @@ def build_exe():
         "--hidden-import=PIL",
         "--hidden-import=xlrd",
         "--hidden-import=openpyxl",
-        "--hidden-import=pyperclip",
         "--hidden-import=PyQt5",
         "--hidden-import=PyQt5.QtWidgets",
         "--hidden-import=PyQt5.QtCore",

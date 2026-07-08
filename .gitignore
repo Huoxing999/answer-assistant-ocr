@@ -1,10 +1,15 @@
 __pycache__/
+.venv/
 *.pyc
 *.pyo
 debug/
 settings.json
+*.bak*
+*.bak_*
+*.spec
 *.egg-info/
 dist/
 build/
 .eggs/
 *.egg
+.github/workflows/

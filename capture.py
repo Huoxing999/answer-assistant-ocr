@@ -46,3 +46,10 @@ def has_changed(prev_hash, current_image):
     curr_hash = compute_hash(current_image)
     dist = hamming_distance(prev_hash, curr_hash)
     return dist > CHANGE_THRESHOLD
+
+
+def has_hash_changed(prev_hash, curr_hash):
+    """用已计算的哈希检测变化，避免同一张图重复计算。"""
+    if prev_hash is None:
+        return True
+    return hamming_distance(prev_hash, curr_hash) > CHANGE_THRESHOLD

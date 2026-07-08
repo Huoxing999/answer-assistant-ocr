@@ -26,6 +26,7 @@ def load_settings():
         "path": "",
         "question_col": 1,
         "answer_col": 2,
+        "option_cols": {},
         "font_size": FONT_SIZE,
     }
     settings_file = _get_settings_file()
@@ -52,15 +53,17 @@ def save_settings(settings):
 class SettingsDialog(QDialog):
     """题库设置对话框：选择文件、选择题目列和答案列、字体大小"""
 
-    def __init__(self, current_path=None, question_col=1, answer_col=2,
+    def __init__(self, current_path=None, question_col=1, answer_col=2, option_cols=None,
                  font_size=FONT_SIZE, parent=None):
         super().__init__(parent)
         self.file_path = current_path
         self.question_col = question_col
         self.answer_col = answer_col
+        self.option_cols = option_cols or {}
         self.font_size = font_size
         self.headers = []
         self.preview_rows = []
+        self.option_combos = {}
         self._init_ui()
 
     def _init_ui(self):
@@ -141,6 +144,10 @@ class SettingsDialog(QDialog):
         load_col_btn.clicked.connect(self._load_columns)
         load_row.addWidget(load_col_btn)
 
+        auto_btn = QPushButton("自动识别列")
+        auto_btn.clicked.connect(self._auto_detect_columns)
+        load_row.addWidget(auto_btn)
+
         self.col_status = QLabel("尚未读取")
         self.col_status.setStyleSheet(f"color: #888; font-size: {base}px;")
         load_row.addWidget(self.col_status)
@@ -162,6 +169,17 @@ class SettingsDialog(QDialog):
         self.answer_combo.currentIndexChanged.connect(self._on_selection_changed)
         combo_row.addWidget(self.answer_combo)
         col_layout.addLayout(combo_row)
+
+        option_row = QHBoxLayout()
+        option_row.addWidget(QLabel("选项列:"))
+        for label in "ABCD":
+            option_row.addWidget(QLabel(label))
+            combo = QComboBox()
+            combo.setMinimumWidth(120)
+            combo.currentIndexChanged.connect(self._on_selection_changed)
+            self.option_combos[label] = combo
+            option_row.addWidget(combo)
+        col_layout.addLayout(option_row)
 
         layout.addWidget(col_group)
 
@@ -226,6 +244,7 @@ class SettingsDialog(QDialog):
         if path:
             self.file_path = path
             self.file_input.setText(path)
+            self.option_cols = {}
             self._load_columns()
 
     def _load_columns(self):
@@ -249,12 +268,19 @@ class SettingsDialog(QDialog):
 
         self.question_combo.blockSignals(True)
         self.answer_combo.blockSignals(True)
+        for combo in self.option_combos.values():
+            combo.blockSignals(True)
 
         self.question_combo.clear()
         self.answer_combo.clear()
+        for combo in self.option_combos.values():
+            combo.clear()
+            combo.addItem("不使用", None)
         for i, col_name in enumerate(self.headers):
             self.question_combo.addItem(col_name, i)
             self.answer_combo.addItem(col_name, i)
+            for combo in self.option_combos.values():
+                combo.addItem(col_name, i)
 
         # 恢复上次选择的列
         if self.question_col < len(self.headers):
@@ -267,13 +293,39 @@ class SettingsDialog(QDialog):
         elif len(self.headers) > 2:
             self.answer_combo.setCurrentIndex(2)
 
+        if self.option_cols:
+            self._set_option_combo_values(self.option_cols)
+        else:
+            self._apply_auto_detected_columns()
+
         self.question_combo.blockSignals(False)
         self.answer_combo.blockSignals(False)
+        for combo in self.option_combos.values():
+            combo.blockSignals(False)
 
         self.col_status.setText(f"已读取 {len(self.headers)} 列，共 {len(self.preview_rows)} 行数据")
         self.col_status.setStyleSheet("color: #00FF88; font-size: 30px;")
 
         self._update_preview()
+
+    def _auto_detect_columns(self):
+        if not self.headers:
+            self._load_columns()
+            return
+        self._apply_auto_detected_columns()
+        self._update_preview()
+
+    def _apply_auto_detected_columns(self):
+        q_col, a_col, option_cols = QuestionBank.detect_columns(self.headers, self.preview_rows)
+        self.question_combo.setCurrentIndex(q_col)
+        self.answer_combo.setCurrentIndex(a_col)
+        self._set_option_combo_values(option_cols)
+
+    def _set_option_combo_values(self, option_cols):
+        for label, combo in self.option_combos.items():
+            col = option_cols.get(label)
+            index = combo.findData(col)
+            combo.setCurrentIndex(index if index >= 0 else 0)
 
     def _on_selection_changed(self):
         if self.headers and self.preview_rows:
@@ -282,6 +334,7 @@ class SettingsDialog(QDialog):
     def _update_preview(self):
         q_col = self.question_combo.currentData()
         a_col = self.answer_combo.currentData()
+        option_cols = self._current_option_cols()
 
         if q_col is None or a_col is None:
             return
@@ -295,12 +348,14 @@ class SettingsDialog(QDialog):
         self.preview_label.setText(
             f"题目列: 第{q_col + 1}列 [{self.headers[q_col]}]  |  "
             f"答案列: 第{a_col + 1}列 [{self.headers[a_col]}]  |  "
+            f"选项列: {self._option_summary(option_cols)}  |  "
             f"前 {len(preview)} 行预览:"
         )
         self.preview_label.setStyleSheet("color: #4FC3F7; font-size: 30px;")
 
-        self.preview_table.setColumnCount(2)
-        self.preview_table.setHorizontalHeaderLabels(["题目", "答案"])
+        option_labels = [label for label in "ABCD" if label in option_cols]
+        self.preview_table.setColumnCount(2 + len(option_labels))
+        self.preview_table.setHorizontalHeaderLabels(["题目", "答案"] + [f"选项{label}" for label in option_labels])
         self.preview_table.setRowCount(len(preview))
 
         for r, row in enumerate(preview):
@@ -308,8 +363,29 @@ class SettingsDialog(QDialog):
             a_val = row[a_col] if a_col < len(row) else ""
             self.preview_table.setItem(r, 0, QTableWidgetItem(q_val[:80]))
             self.preview_table.setItem(r, 1, QTableWidgetItem(a_val[:80]))
+            for offset, label in enumerate(option_labels, start=2):
+                col = option_cols[label]
+                value = row[col] if col < len(row) else ""
+                self.preview_table.setItem(r, offset, QTableWidgetItem(value[:80]))
 
         self.preview_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+
+    def _current_option_cols(self):
+        result = {}
+        for label, combo in self.option_combos.items():
+            col = combo.currentData()
+            if col is not None:
+                result[label] = col
+        return result
+
+    def _option_summary(self, option_cols):
+        if not option_cols:
+            return "未选择"
+        return "、".join(
+            f"{label}=第{option_cols[label] + 1}列"
+            for label in "ABCD"
+            if label in option_cols
+        )
 
     def _on_ok(self):
         path = self.file_input.text().strip()
@@ -324,6 +400,7 @@ class SettingsDialog(QDialog):
         self.file_path = path
         self.question_col = self.question_combo.currentData()
         self.answer_col = self.answer_combo.currentData()
+        self.option_cols = self._current_option_cols()
         self.font_size = self.font_spin.value()
 
         if self.question_col == self.answer_col:
@@ -340,5 +417,6 @@ class SettingsDialog(QDialog):
             "path": self.file_path,
             "question_col": self.question_col,
             "answer_col": self.answer_col,
+            "option_cols": self.option_cols,
             "font_size": self.font_size,
         }
